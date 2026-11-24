@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="css/index.css">
+
+  <script src="p5.min.js"></script>
+
+  <title>DisplayColors</title>
+
+  <style>
+    #controlZone {
+      background: #eee;
+      padding: 20px;
+      width: 100%;
+      margin-bottom: 20px;
+      box-sizing: border-box;
+    }
+
+    .control-group {
+      margin-top: 15px;
+    }
+
+    .control-group label {
+      display: inline-block;
+      margin-right: 12px;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .btn-row button {
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+
+    .input-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    #status {
+      margin-top: 15px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    #canvas-container {
+      margin-top: 20px;
+    }
+
+    canvas {
+      max-width: 100% !important;
+      height: auto !important;
+      border: 1px solid #ccc;
+      background-image: 
+        linear-gradient(45deg, #e0e0e0 25%, transparent 25%), 
+        linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #e0e0e0 75%), 
+        linear-gradient(-45deg, transparent 75%, #e0e0e0 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>DisplayColors</h1>
+  <p>Erzeugt einfarbige oder transparente Hintergründe als PNG-Grafiken in beliebiger Pixelgröße 
+  und speichert das Ergebnis unter Downloads.</p>
+  <p><a href="https://khz-66.github.io/" target="_blank">Homepage</a><br></p>
+
+  <img src="canvas.png" alt="Vorschau" style="width: 100%; height: auto; max-width: 400px;">
+
+  <div id="controlZone">
+    <div class="control-group" style="margin-top: 0;">
+      <strong>Farbe wählen:</strong>
+      <div class="btn-row">
+        <button type="button" id="btnWhite">Weiß</button>
+        <button type="button" id="btnBlack">Schwarz</button>
+        <button type="button" id="btnTransparent">Transparent</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label for="hexInput"><strong>Hex-Farbcode:</strong></label>
+      <div class="input-row">
+        <span>#</span>
+        <input type="text" id="hexInput" maxlength="8" placeholder="FFFFFF" style="width: 90px; text-transform: uppercase;">
+        <input type="color" id="colorPicker" value="#ffffff" title="Farbe visuell wählen">
+        <button type="button" id="btnApplyHex">Hex anwenden</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <strong>Abmessungen (Pixel):</strong>
+      <div class="input-row">
+        <label for="widthInput">Breite (B):</label>
+        <input type="number" id="widthInput" min="1" max="8000" style="width: 90px;">
+        <label for="heightInput">Höhe (H):</label>
+        <input type="number" id="heightInput" min="1" max="8000" style="width: 90px;">
+      </div>
+    </div>
+
+    <div class="control-group">
+      <button type="button" id="saveBtn">Bild speichern (0x0)</button>
+    </div>
+
+    <div id="status">Werte wählen oder eingeben</div>
+  </div>
+
+  <!-- Vorschau-Canvas -->
+  <div id="canvas-container"></div>
+
+  <script>
+    let imgW = 1080;
+    let imgH = 1920;
+    let currentColor = '#FFFFFF';
+    let isTransparent = false;
+    let hexValue = 'FFFFFF';
+    let p5Canvas;
+
+    const STORAGE_KEY = 'DisplayColors_AppConfig';
+
+    function setup() {
+      pixelDensity(1);
+      loadPreferences();
+      p5Canvas = createCanvas(400, 150);
+      p5Canvas.parent('canvas-container');
+      noLoop();
+      updateUI();
+      redraw();
+    }
+
+    function draw() {
+      clear();
+      if (!isTransparent) {
+        background(currentColor);
+      }
+    }
+
+    function loadPreferences() {
+      const defaultW = 1080;
+      const defaultH = 2400;
+
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (saved) {
+          imgW = saved.imgW || Math.round(defaultW);
+          imgH = saved.imgH || Math.round(defaultH);
+          currentColor = saved.currentColor || '#FFFFFF';
+          isTransparent = Boolean(saved.isTransparent);
+          hexValue = saved.hexInput || 'FFFFFF';
+          return;
+        }
+      } catch (e) {
+        console.warn('Konnte Einstellungen nicht laden:', e);
+      }
+
+      imgW = Math.round(defaultW);
+      imgH = Math.round(defaultH);
+      currentColor = '#FFFFFF';
+      isTransparent = false;
+      hexValue = 'FFFFFF';
+    }
+
+    function savePreferences() {
+      try {
+        const data = {
+          imgW: imgW,
+          imgH: imgH,
+          currentColor: currentColor,
+          isTransparent: isTransparent,
+          hexInput: hexValue
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {
+        console.warn('Konnte Einstellungen nicht speichern:', e);
+      }
+    }
+
+    function setStatus(msg, color = '#333') {
+      const statusEl = document.getElementById('status');
+      statusEl.style.color = color;
+      statusEl.innerText = msg;
+    }
+
+    function updateUI() {
+      document.getElementById('widthInput').value = imgW;
+      document.getElementById('heightInput').value = imgH;
+      document.getElementById('hexInput').value = hexValue;
+      if (/^[0-9A-Fa-f]{6}$/.test(hexValue)) {
+        document.getElementById('colorPicker').value = '#' + hexValue;
+      }
+      document.getElementById('saveBtn').innerText = `Bild speichern (${imgW}x${imgH})`;
+    }
+
+    // Schnellwahl-Buttons
+    document.getElementById('btnWhite').addEventListener('click', () => {
+      currentColor = '#FFFFFF';
+      hexValue = 'FFFFFF';
+      isTransparent = false;
+      updateUI();
+      setStatus('Farbe: Weiß', '#0055aa');
+      redraw();
+    });
+
+    document.getElementById('btnBlack').addEventListener('click', () => {
+      currentColor = '#000000';
+      hexValue = '000000';
+      isTransparent = false;
+      updateUI();
+      setStatus('Farbe: Schwarz', '#0055aa');
+      redraw();
+    });
+
+    document.getElementById('btnTransparent').addEventListener('click', () => {
+      isTransparent = true;
+      setStatus('Farbe: Transparent', '#0055aa');
+      redraw();
+    });
+
+    // Color-Picker Synchronisation
+    document.getElementById('colorPicker').addEventListener('input', (e) => {
+      const hex = e.target.value.replace('#', '').toUpperCase();
+      document.getElementById('hexInput').value = hex;
+      hexValue = hex;
+      currentColor = '#' + hex;
+      isTransparent = false;
+      setStatus(`Hex #${hex} gewählt`, '#0055aa');
+      redraw();
+    });
+
+    // Hex-Code anwenden
+    function applyHexColor() {
+      const raw = document.getElementById('hexInput').value.trim().replace(/^#/, '').toUpperCase();
+      if (/^[0-9A-F]{6}$/.test(raw) || /^[0-9A-F]{8}$/.test(raw)) {
+        hexValue = raw;
+        if (raw.length === 8) {
+          // Processing-Format AARRGGBB -> CSS #RRGGBBAA
+          const aa = raw.substring(0, 2);
+          const rrggbb = raw.substring(2, 8);
+          currentColor = '#' + rrggbb + aa;
+        } else {
+          currentColor = '#' + raw;
+        }
+        isTransparent = false;
+        updateUI();
+        setStatus(`Hex #${raw} angewendet`, '#0055aa');
+        redraw();
+      } else {
+        setStatus('Ungültiger Hex-Code! (6 oder 8 Zeichen 0-9, A-F)', '#cc0000');
+      }
+    }
+
+    document.getElementById('btnApplyHex').addEventListener('click', applyHexColor);
+    document.getElementById('hexInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') applyHexColor();
+    });
+
+    // Breite & Höhe aktualisieren
+    document.getElementById('widthInput').addEventListener('input', (e) => {
+      const w = parseInt(e.target.value, 10);
+      if (!isNaN(w) && w > 0 && w <= 8000) {
+        imgW = w;
+        document.getElementById('saveBtn').innerText = `Bild speichern (${imgW}x${imgH})`;
+        setStatus(`Breite auf ${imgW}px gesetzt`, '#0055aa');
+      } else {
+        setStatus('Ungültige Breite! (1–8000 px)', '#cc0000');
+      }
+    });
+
+    document.getElementById('heightInput').addEventListener('input', (e) => {
+      const h = parseInt(e.target.value, 10);
+      if (!isNaN(h) && h > 0 && h <= 8000) {
+        imgH = h;
+        document.getElementById('saveBtn').innerText = `Bild speichern (${imgW}x${imgH})`;
+        setStatus(`Höhe auf ${imgH}px gesetzt`, '#0055aa');
+      } else {
+        setStatus('Ungültige Höhe! (1–8000 px)', '#cc0000');
+      }
+    });
+
+    // Exportieren & Speichern
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      if (imgW <= 0 || imgW > 8000 || imgH <= 0 || imgH > 8000) {
+        setStatus('Bitte gültige Abmessungen (1–8000 px) eingeben!', '#cc0000');
+        return;
+      }
+
+      setStatus('Bild wird erzeugt…', '#b36b00');
+
+      const exportImg = createGraphics(imgW, imgH);
+      exportImg.pixelDensity(1);
+
+      if (isTransparent) {
+        exportImg.clear();
+      } else {
+        exportImg.background(currentColor);
+      }
+
+      const now = new Date();
+      const filename = `screen_${imgW}x${imgH}_${now.getFullYear()}${now.getMonth() + 1}${now.getDate()}_${Math.round(millis())}.png`;
+
+      exportImg.elt.toBlob((blob) => {
+        exportImg.remove();
+        if (!blob) {
+          setStatus('Fehler beim Erzeugen der Datei (Bild evtl. zu groß).', '#cc0000');
+          return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+        savePreferences();
+        setStatus(`Gespeichert! (${imgW}x${imgH}px)`, '#007700');
+      }, 'image/png');
+    });
+  </script>
+</body>
+</html>
