@@ -57,24 +57,29 @@
       margin-top: 20px;
     }
 
-    canvas {
+    canvas, #fallbackImg {
       max-width: 100% !important;
       height: auto !important;
       border: 1px solid #ccc;
-      background-image: 
-        linear-gradient(45deg, #e0e0e0 25%, transparent 25%), 
-        linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), 
-        linear-gradient(45deg, transparent 75%, #e0e0e0 75%), 
+      background-image:
+        linear-gradient(45deg, #e0e0e0 25%, transparent 25%),
+        linear-gradient(-45deg, #e0e0e0 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e0e0e0 75%),
         linear-gradient(-45deg, transparent 75%, #e0e0e0 75%);
       background-size: 20px 20px;
       background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+
+    #fallbackBox {
+      margin-top: 15px;
+      display: none;
     }
   </style>
 </head>
 
 <body>
   <h1>DisplayColors</h1>
-  <p>Erzeugt einfarbige oder transparente Hintergründe als PNG-Grafiken in beliebiger Pixelgröße 
+  <p>Erzeugt einfarbige oder transparente Hintergründe als PNG-Grafiken in beliebiger Pixelgröße
   und speichert das Ergebnis unter Downloads.</p>
   <p><a href="https://khz-66.github.io/" target="_blank">Homepage</a><br></p>
 
@@ -115,6 +120,13 @@
     </div>
 
     <div id="status">Werte wählen oder eingeben</div>
+
+    <div id="fallbackBox">
+      <p style="margin: 8px 0; font-size: 0.9em;">
+        Falls kein automatischer Download startet, Bild gedrückt halten / Rechtsklick → <strong>Bild speichern</strong>:
+      </p>
+      <img id="fallbackImg" alt="Erzeugtes PNG" style="max-width: 220px;">
+    </div>
   </div>
 
   <!-- Vorschau-Canvas -->
@@ -122,7 +134,7 @@
 
   <script>
     let imgW = 1080;
-    let imgH = 1920;
+    let imgH = 2400;
     let currentColor = '#FFFFFF';
     let isTransparent = false;
     let hexValue = 'FFFFFF';
@@ -154,8 +166,8 @@
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
         if (saved) {
-          imgW = saved.imgW || Math.round(defaultW);
-          imgH = saved.imgH || Math.round(defaultH);
+          imgW = saved.imgW || defaultW;
+          imgH = saved.imgH || defaultH;
           currentColor = saved.currentColor || '#FFFFFF';
           isTransparent = Boolean(saved.isTransparent);
           hexValue = saved.hexInput || 'FFFFFF';
@@ -165,8 +177,8 @@
         console.warn('Konnte Einstellungen nicht laden:', e);
       }
 
-      imgW = Math.round(defaultW);
-      imgH = Math.round(defaultH);
+      imgW = defaultW;
+      imgH = defaultH;
       currentColor = '#FFFFFF';
       isTransparent = false;
       hexValue = 'FFFFFF';
@@ -289,7 +301,7 @@
       }
     });
 
-    // Exportieren & Speichern
+    // Exportieren & Speichern (reines HTML5-Canvas + DataURL)
     document.getElementById('saveBtn').addEventListener('click', () => {
       if (imgW <= 0 || imgW > 8000 || imgH <= 0 || imgH > 8000) {
         setStatus('Bitte gültige Abmessungen (1–8000 px) eingeben!', '#cc0000');
@@ -298,39 +310,56 @@
 
       setStatus('Bild wird erzeugt…', '#b36b00');
 
-      const exportImg = createGraphics(imgW, imgH);
-      exportImg.pixelDensity(1);
+      setTimeout(() => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = imgW;
+          canvas.height = imgH;
 
-      if (isTransparent) {
-        exportImg.clear();
-      } else {
-        exportImg.background(currentColor);
-      }
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            setStatus('Fehler: Canvas-Kontext konnte nicht erstellt werden.', '#cc0000');
+            return;
+          }
 
-      const now = new Date();
-      const filename = `screen_${imgW}x${imgH}_${now.getFullYear()}${now.getMonth() + 1}${now.getDate()}_${Math.round(millis())}.png`;
+          if (isTransparent) {
+            ctx.clearRect(0, 0, imgW, imgH);
+          } else {
+            ctx.fillStyle = currentColor;
+            ctx.fillRect(0, 0, imgW, imgH);
+          }
 
-      exportImg.elt.toBlob((blob) => {
-        exportImg.remove();
-        if (!blob) {
-          setStatus('Fehler beim Erzeugen der Datei (Bild evtl. zu groß).', '#cc0000');
-          return;
+          const dataUrl = canvas.toDataURL('image/png');
+          if (!dataUrl || dataUrl === 'data:,') {
+            setStatus('Fehler: Bild zu groß für diesen Browser.', '#cc0000');
+            return;
+          }
+
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, '0');
+          const filename = `screen_${imgW}x${imgH}_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
+
+          // Fallback-Vorschau befüllen
+          const fallbackImg = document.getElementById('fallbackImg');
+          fallbackImg.src = dataUrl;
+          document.getElementById('fallbackBox').style.display = 'block';
+
+          // Download auslösen
+          const a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = filename;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          savePreferences();
+          setStatus(`Fertig! (${imgW}x${imgH}px)`, '#007700');
+        } catch (err) {
+          console.error('Export-Fehler:', err);
+          setStatus(`Fehler: ${err.message || 'Export fehlgeschlagen'}`, '#cc0000');
         }
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-
-        savePreferences();
-        setStatus(`Gespeichert! (${imgW}x${imgH}px)`, '#007700');
-      }, 'image/png');
+      }, 30);
     });
   </script>
 </body>
